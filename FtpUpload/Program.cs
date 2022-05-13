@@ -18,7 +18,7 @@ var log = new LoggerConfiguration()
     .ReadFrom.Configuration(config)
     .CreateLogger();
 
-string connectionString =  config.GetConnectionString("default");
+string connectionString = config.GetConnectionString("default");
 Settings settings = config.GetRequiredSection(settingKey).Get<Settings>();
 
 var connection = new SqliteConnection(connectionString);
@@ -35,13 +35,9 @@ try
 
     foreach (string file in listToUpload)
     {
-        string filename = Path.GetFileName(file);
-        log.Information($"Subiendo archivo....{filename}");
+        if (await tryToUploadTheFile(client, file, documentsRepository, log))
+            continue;
 
-        if (await tryToUploadTheFile(client, file, filename, documentsRepository, log)) continue;
-
-
-        log.Information($"Subiendo completado.... {filename}");
     }
 }
 catch (Exception ex)
@@ -76,27 +72,34 @@ List<string> getFilesToUpload(Settings settings2, Logger logger, DocumentsReposi
 
     logger.Information($"Cantidad de archivos en el folder {files.Count}");
 
-    var list = files.Where(x => !documentsRepository2.DocumentExists(Path.GetFileName(x))).ToList();
+    var list = files.Where(path => !documentsRepository2.DocumentExists(Path.GetFileName(path), File.GetLastWriteTime(path))).ToList();
 
     logger.Information($"Cantidad de archivos para subir {list.Count}");
     return list;
 }
 
-async Task<bool> tryToUploadTheFile(FtpClient client, string localFilePath, string filename, DocumentsRepository documentsRepository3,
+async Task<bool> tryToUploadTheFile(FtpClient client, string localFilePath, DocumentsRepository documentsRepository3,
     Logger log1)
 {
 
+    string filename = Path.GetFileName(localFilePath);
+    DateTime lastModefication = File.GetLastWriteTime(localFilePath);
     try
     {
+
+        log.Information($"Subiendo archivo....{filename}");
         await client.UploadFileAsync(localFilePath, filename);
         documentsRepository3.SaveDocument(new Document
         {
             Filename = filename,
-            UploadedDate = DateTimeOffset.UtcNow
+            UploadedDate = DateTimeOffset.UtcNow,
+            LastModification = lastModefication
         });
+        log.Information($"Subiendo completado.... {filename}");
     }
     catch (Exception e)
     {
+        log.Information($"Subiendo completado.... {filename}");
         log1.Error(e, $"Ha ocurido un error subiendo el archivo {filename}");
         return true;
     }
